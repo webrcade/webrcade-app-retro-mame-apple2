@@ -9,6 +9,7 @@ import {
   CIDS,
   KeyCodeToControlMapping,
   blobToStr,
+  computeShortNames,
   md5,
   LOG,
 } from '@webrcade/app-common';
@@ -45,7 +46,7 @@ export class Emulator extends RetroAppWrapper {
     this.diskActivity = false;
     this.selectDown = false;
     this.analogMode = true;
-    this.keyboardJoystickMode = false;
+    this.keyboardJoystickMode = true;
 
     // Audio processing
     this.audioStarted = 0;
@@ -286,6 +287,63 @@ export class Emulator extends RetroAppWrapper {
     return await super.loadStateForSlot(slot);
   }
 
+  getMappings() {
+    return this.app.mappings || {};
+  }
+
+  initMaps() {
+    if (!this._initMaps) {
+      this._initMaps = true;
+
+      this.buttonBits = {
+        "a":  this.INP_A,
+        "b":  this.INP_B,
+        "x":  this.INP_X,
+        "y":  this.INP_Y,
+        "lb": this.INP_LBUMP,
+        "rb": this.INP_RBUMP,
+        "lt": this.INP_LTRIG,
+        "rt": this.INP_RTRIG,
+        "start": this.INP_START,
+      };
+
+      this.buttonIsDown = {};
+      for (const key in this.buttonBits) {
+        this.buttonIsDown[key] = [false, false, false, false];
+      }
+
+      this.keyActions = {
+        "return":      { code: 'Enter'       },
+        "space":       { code: 'Space'       },
+        "escape":      { code: 'Escape'      },
+        "tab":         { code: 'Tab'         },
+        "delete":      { code: 'Backspace'   },
+        "openapple":   { code: 'AltLeft'     },
+        "closedapple": { code: 'AltRight'    },
+        "minus":       { code: 'Minus'       },
+        "equal":       { code: 'Equal'       },
+        "lbracket":    { code: 'BracketLeft' },
+        "rbracket":    { code: 'BracketRight'},
+        "backslash":   { code: 'Backslash'   },
+        "semicolon":   { code: 'Semicolon'   },
+        "quote":       { code: 'Quote'       },
+        "backtick":    { code: 'Backquote'   },
+        "comma":       { code: 'Comma'       },
+        "period":      { code: 'Period'      },
+        "slash":       { code: 'Slash'       },
+      };
+      for (let c = 0; c < 26; c++) {
+        const ch = (c + 10).toString(36);
+        this.keyActions[ch] = { code: 'Key' + ch.toUpperCase() };
+      }
+      for (let c = 0; c <= 9; c++) {
+        this.keyActions['' + c] = { code: 'Digit' + c };
+      }
+
+      this.mappings = this.getMappings();
+    }
+  }
+
   sendInput(controller, input, analog0x, analog0y, analog1x, analog1y) {
     if (controller === 0) {
       // const DEADZONE = 0.15;
@@ -297,7 +355,29 @@ export class Emulator extends RetroAppWrapper {
       // const py = Math.round((sy + 1) * 127.5);
       // console.log(`[input] ax=${analog0x.toFixed(3)} ay=${analog0y.toFixed(3)} -> pdl0=${px} pdl1=${py}`);
     }
-    super.sendInput(controller, input, analog0x, analog0y, analog1x, analog1y);
+
+    this.initMaps();
+    let maskedInput = input;
+
+    for (const [btn, action] of Object.entries(this.mappings)) {
+      const bit = this.buttonBits[btn];
+      const keyDef = this.keyActions[action];
+      if (bit && keyDef) {
+        const isDown = !!(maskedInput & bit);
+        const wasDown = this.buttonIsDown[btn][controller];
+        if (isDown && !wasDown) {
+          if (keyDef.shift) this.sendKeyDown('ShiftLeft');
+          this.sendKeyDown(keyDef.code);
+        } else if (!isDown && wasDown) {
+          this.sendKeyUp(keyDef.code);
+          if (keyDef.shift) this.sendKeyUp('ShiftLeft');
+        }
+        this.buttonIsDown[btn][controller] = isDown;
+        maskedInput &= ~bit;
+      }
+    }
+
+    super.sendInput(controller, maskedInput, analog0x, analog0y, analog1x, analog1y);
   }
 
   async getFileContentMd5(content) {
@@ -433,46 +513,10 @@ export class Emulator extends RetroAppWrapper {
       LOG.info('Wrote disk: ' + currentMedia.path);
     }
 
-    // Determine unique short names
-    if (this.mediaList.length > 0) {
-      const compare = this.mediaList[0].originalName;
-
-      let commonEnd = 0;
-      let startParen = -1;
-      let uniqueNameCount = 0;
-      for (commonEnd = 0; commonEnd < compare.length; commonEnd++) {
-        let stop = false;
-        for (let i = 1; i < this.mediaList.length; i++) {
-          uniqueNameCount++;
-
-          const current = this.mediaList[i].originalName;
-          if (commonEnd >= (current.length - 1)) {
-            stop = true;
-            break;
-          }
-
-          if (current[commonEnd] === "(") {
-            startParen = commonEnd;
-          } else if (current[commonEnd] === ")") {
-            startParen = -1;
-          }
-
-          if (current[commonEnd] !== compare[commonEnd]) {
-            stop = true;
-            break;
-          }
-        }
-        if (stop) break;
-      }
-
-      for (let i = 0; i < this.mediaList.length; i++) {
-        const curr = this.mediaList[i];
-        curr.shortName = curr.originalName.substring(startParen !== -1 ? startParen : uniqueNameCount > 0 ? commonEnd : 0);
-        const lastDot = curr.shortName.indexOf(".");
-        if (lastDot !== -1) {
-          curr.shortName = curr.shortName.substring(0, lastDot);
-        }
-      }
+    const shorts = computeShortNames(this.mediaList.map(m => m.originalName));
+    for (let i = 0; i < this.mediaList.length; i++) {
+      const dot = shorts[i].indexOf('.');
+      this.mediaList[i].shortName = dot !== -1 ? shorts[i].substring(0, dot) : shorts[i];
     }
   }
 
