@@ -2,16 +2,27 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-The Apple II application for [webЯcade](https://www.webrcade.com) is an emulator for the [Apple II computer](https://en.wikipedia.org/wiki/Apple_II).
+This repository contains a [webЯcade](https://www.webrcade.com) application for the following system:
 
-The underlying emulator is a MAME-based core with RetroAchievements support.
+* [Apple II](#apple-ii)
 
-## Features
+## Apple II
 
-- Full Apple II emulation via MAME
-- RetroAchievements integration for supported games
-- Save state support
-- Gamepad and keyboard controls
+The Apple II application is an emulator for the [Apple IIe](https://en.wikipedia.org/wiki/Apple_IIe) personal computer.
+
+The underlying emulator is the Libretro port of [MAME](https://github.com/libretro/mame).
+
+<p align="center">
+ <a href="https://play.webrcade.com">
+  <img src="https://docs.webrcade.com/assets/images/apps/apple2.png" width="90%">
+ </a>
+ <br>
+ <i>Apple IIe</i>
+</p>
+
+### Documentation
+
+The [Apple II Application Documentation](https://docs.webrcade.com/apps/emulators/apple2/) includes [keyboard](https://docs.webrcade.com/apps/emulators/apple2/#keyboard) and [gamepad](https://docs.webrcade.com/apps/emulators/apple2/#gamepad) control mappings, information related to [saving changes to game media](https://docs.webrcade.com/apps/emulators/apple2/#saving-changes-to-media), and details regarding the use of the emulator within a [webЯcade feed](https://docs.webrcade.com/apps/emulators/apple2/#feed).
 
 ## LICENSE
 
@@ -23,4 +34,4 @@ Unless required by applicable law or agreed to in writing, software distributed 
 
 ---
 
-The license presented above is limited to the Apple II application for [webЯcade](https://www.webrcade.com). The underlying MAME project retains its own specific licensing.
+The license presented above is limited to the Apple II application for [webЯcade](https://www.webrcade.com). The underlying [Libretro MAME](https://github.com/libretro/mame) project retains its own specific licensing.

@@ -188,21 +188,21 @@ export class Emulator extends RetroAppWrapper {
     }
   }
 
-  // handleEscape(controllers) {
-  //   if (controllers.isControlDown(0, CIDS.LTRIG) && controllers.isControlDown(0, CIDS.RANALOG)) {
-  //     if (!this.gamepadVkPending) {
-  //       this.gamepadVkPending = true;
-  //       controllers
-  //         .waitUntilControlReleased(0, CIDS.ESCAPE)
-  //           .then(() => {
-  //             this.gamepadVkPending = false;
-  //             this.toggleKeyboard();
-  //           });
-  //     }
-  //     return true;
-  //   }
-  //   return false;
-  // }
+  handleEscape(controllers) {
+    if (controllers.isControlDown(0, CIDS.LTRIG) && controllers.isControlDown(0, CIDS.RANALOG)) {
+      if (!this.gamepadVkPending) {
+        this.gamepadVkPending = true;
+        controllers
+          .waitUntilControlReleased(0, CIDS.ESCAPE)
+            .then(() => {
+              this.gamepadVkPending = false;
+              this.toggleKeyboard();
+            });
+      }
+      return true;
+    }
+    return false;
+  }
 
   onPause(p) {
     const { app } = this;
