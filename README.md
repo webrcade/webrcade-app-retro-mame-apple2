@@ -2,13 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-This repository contains a [webЯcade](https://www.webrcade.com) application for the following system:
-
-* [Apple II](#apple-ii)
-
-## Apple II
-
-The Apple II application is an emulator for the [Apple IIe](https://en.wikipedia.org/wiki/Apple_IIe) personal computer.
+The Apple II application for [webЯcade](https://www.webrcade.com) is an emulator for the [Apple IIe](https://en.wikipedia.org/wiki/Apple_IIe) personal computer.
 
 The underlying emulator is the Libretro port of [MAME](https://github.com/libretro/mame).
 
@@ -20,7 +14,7 @@ The underlying emulator is the Libretro port of [MAME](https://github.com/libret
  <i>Apple IIe</i>
 </p>
 
-### Documentation
+## Documentation
 
 The [Apple II Application Documentation](https://docs.webrcade.com/apps/emulators/apple2/) includes [keyboard](https://docs.webrcade.com/apps/emulators/apple2/#keyboard) and [gamepad](https://docs.webrcade.com/apps/emulators/apple2/#gamepad) control mappings, information related to [saving changes to game media](https://docs.webrcade.com/apps/emulators/apple2/#saving-changes-to-media), and details regarding the use of the emulator within a [webЯcade feed](https://docs.webrcade.com/apps/emulators/apple2/#feed).
 
