@@ -38,6 +38,7 @@ export class Emulator extends RetroAppWrapper {
     window.emulator = this;
     this.mediaList = [];
     this.mediaIndex = 0;
+    this.flop2Index = -1; // -1 = no disk mounted
     this.firstFrame = true;
     this.prefs = new Prefs(this);
     this.touchEvent = false;
@@ -243,18 +244,15 @@ export class Emulator extends RetroAppWrapper {
 
   getMediaList() { return this.mediaList; }
   getMediaIndex() { return this.mediaIndex; }
+  getFlop2Index() { return this.flop2Index; }
 
   getMediaPath() {
     return this.mediaList[this.mediaIndex].path;
   }
 
-  // setMediaIndex(index, eject = false) {
-  //   const { Module } = window;
-  //   this.mediaIndex = index;
-  //   if (eject) {
-  //     Module._wrc_set_options(this.OPT12);
-  //   }
-  // }
+  getFlop2Path() {
+    return this.mediaList.length > 0 && this.flop2Index >= 0 ? this.mediaList[this.flop2Index].path : '';
+  }
 
   setMediaIndex(index, eject = false) {
     const { Module } = window;
@@ -269,8 +267,18 @@ export class Emulator extends RetroAppWrapper {
     }
   }
 
+  setFlop2Index(index, eject = false) {
+    this.flop2Index = index;
+    // OPT12 handles all drives
+    if (eject) {
+      window.Module._wrc_set_options(this.OPT12);
+    }
+  }
+
   updateSaveStateForSlotProps(slot, props) {
     props.stateName = this.getMediaList()[this.getMediaIndex()].stateName;
+    props.flop2StateName = this.mediaList.length > 0 && this.flop2Index >= 0
+      ? this.mediaList[this.flop2Index].stateName : null;
   }
 
   async loadStateForSlot(slot, currentSlot) {
@@ -284,6 +292,21 @@ export class Emulator extends RetroAppWrapper {
         }
       }
     }
+
+    const enable2nd525 = this.getProps().enable2nd525 || false;
+    const flop2StateName = currentSlot.flop2StateName;
+    if (enable2nd525 && flop2StateName) {
+      for (let i = 0; i < this.mediaList.length; i++) {
+        if (this.mediaList[i].stateName === flop2StateName) {
+          this.setFlop2Index(i, true);
+          break;
+        }
+      }
+    } else if (!enable2nd525) {
+      // Force eject if property is disabled
+      this.setFlop2Index(-1, true);
+    }
+
     return await super.loadStateForSlot(slot);
   }
 
@@ -538,16 +561,22 @@ export class Emulator extends RetroAppWrapper {
 
       this.mediaList.push(currentMedia);
 
-      if (i === 0) {
-        this.game = 'apple2e -gameio joy -flop1 "' + currentMedia.path + '"';
-        this.setMediaIndex(0);
-      }
-
       let stream = FS.open(currentMedia.path, 'a');
       FS.write(stream, bytes, 0, bytes.length, 0, true);
       FS.close(stream);
 
       LOG.info('Wrote disk: ' + currentMedia.path);
+    }
+
+    if (this.mediaList.length > 0) {
+      this.game = 'apple2e -gameio joy -flop1 "' + this.mediaList[0].path + '"';
+      this.setMediaIndex(0);
+
+      const enable2nd525 = this.getProps().enable2nd525 || false;
+      if (enable2nd525 && this.mediaList.length > 1) {
+        this.game += ' -flop2 "' + this.mediaList[1].path + '"';
+        this.flop2Index = 1;
+      }
     }
 
     const shorts = computeShortNames(this.mediaList.map(m => m.originalName));
