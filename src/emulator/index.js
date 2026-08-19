@@ -15,6 +15,7 @@ import {
 } from '@webrcade/app-common';
 
 import { Prefs } from './prefs';
+import { createEmptyDisk525 } from './emptydisk';
 
 export class Apple2KeyCodeToControlMapping extends KeyCodeToControlMapping {
   constructor() {
@@ -251,7 +252,7 @@ export class Emulator extends RetroAppWrapper {
   getFlop2Index() { return this.flop2Index; }
 
   getMediaPath() {
-    return this.mediaList[this.mediaIndex].path;
+    return this.mediaList.length > 0 && this.mediaIndex >= 0 ? this.mediaList[this.mediaIndex].path : '';
   }
 
   getFlop2Path() {
@@ -261,10 +262,6 @@ export class Emulator extends RetroAppWrapper {
   setMediaIndex(index, eject = false) {
     const { Module } = window;
     this.mediaIndex = index;
-    const currentMedia = this.mediaList[this.mediaIndex];
-    if (index === 0) {
-      this.setStateFilePath(currentMedia.statePath);
-    }
 
     if (eject) {
       Module._wrc_set_options(this.OPT12);
@@ -289,25 +286,36 @@ export class Emulator extends RetroAppWrapper {
     const stateName = currentSlot.stateName;
     if (stateName) {
       const mediaList = this.getMediaList();
+      let found = false;
       for (let i = 0; i < mediaList.length; i++) {
         const media = mediaList[i];
         if (media.stateName === stateName) {
           this.setMediaIndex(i, true);
+          found = true;
+          break;
         }
       }
+      if (!found) this.setMediaIndex(-1, true);
+    } else {
+      // Drive 1 was empty ("none") when this state was saved -- eject
+      // whatever's currently mounted rather than leaving it in place.
+      this.setMediaIndex(-1, true);
     }
 
     const enable2nd525 = this.getProps().enable2nd525 || false;
     const flop2StateName = currentSlot.flop2StateName;
     if (enable2nd525 && flop2StateName) {
+      let found = false;
       for (let i = 0; i < this.mediaList.length; i++) {
         if (this.mediaList[i].stateName === flop2StateName) {
           this.setFlop2Index(i, true);
+          found = true;
           break;
         }
       }
-    } else if (!enable2nd525) {
-      // Force eject if property is disabled
+      if (!found) this.setFlop2Index(-1, true);
+    } else {
+      // Not enabled, or enabled but empty ("none") when saved -- eject either way.
       this.setFlop2Index(-1, true);
     }
 
@@ -521,37 +529,62 @@ export class Emulator extends RetroAppWrapper {
     this.mediaList = [];
 
     const systemDir = this.RA_DIR + 'apple2e/';
+    const realDiskCount = this.media.length;
 
-    for (let i = 0; i < this.media.length; i++) {
-      const m = this.media[i];
-      const bytes = m[0];
-      let name = m[1] || ('game' + i + '.dsk');
-      const slashIdx = name.lastIndexOf('/');
-      if (slashIdx !== -1) name = name.substring(slashIdx + 1);
+    // Save disks: unconditional for Apple II (no format ambiguity, unlike
+    // IIGS). Count is per drive TYPE, not per physical drive -- Apple II
+    // only has one type (5.25"), so drive 1 and drive 2 share a single pool
+    // of N blanks rather than each getting their own -- see
+    // SAVE_DISKS_DESIGN.md.
+    const enable2nd525 = this.getProps().enable2nd525 || false;
+    // Explicit 0 ("none") must stay 0 -- a truthy check would treat it the
+    // same as undefined and silently fall back to 1.
+    const totalSaveDisks = this.saveDisks === undefined ? 1 : this.saveDisks;
 
-      const extIdx = name.lastIndexOf('.');
-      let fileName = '';
-      let ext = '';
-      if (extIdx !== -1) {
-        fileName = name.substring(0, extIdx);
-        ext = name.substring(extIdx + 1);
+    LOG.info('[SaveDiskDebug] totalSaveDisks=' + totalSaveDisks +
+      ' enable2nd525=' + enable2nd525);
+
+    let saveDiskIndex = 0;
+
+    for (let i = 0; i < (realDiskCount + totalSaveDisks); i++) {
+      const isSaveDisk = i >= realDiskCount;
+      const m = isSaveDisk ? null : this.media[i];
+      const bytes = isSaveDisk ? createEmptyDisk525(++saveDiskIndex) : m[0];
+      let name = isSaveDisk ? ('Save Disk ' + saveDiskIndex) : (m[1] || ('game' + i + '.dsk'));
+
+      let updatedName, stateName;
+
+      if (!isSaveDisk) {
+        const slashIdx = name.lastIndexOf('/');
+        if (slashIdx !== -1) name = name.substring(slashIdx + 1);
+
+        const extIdx = name.lastIndexOf('.');
+        let fileName = '';
+        let ext = '';
+        if (extIdx !== -1) {
+          fileName = name.substring(0, extIdx);
+          ext = name.substring(extIdx + 1);
+        }
+
+        const pstartIdx = fileName.indexOf('(');
+        const pendIdx = fileName.lastIndexOf(')');
+
+        let parens = '';
+        if (pstartIdx !== -1 && pendIdx !== -1) {
+          parens = fileName.substring(pstartIdx, pendIdx + 1);
+        }
+
+        const updatedNameNoExt = 'game' + i +
+          (parens.length > 0 ? (' ' + parens) : '') +
+          (fileName.toLowerCase().indexOf('ntsc') !== -1 ? ' NTSC' : '') +
+          (fileName.toLowerCase().indexOf('pal') !== -1 ? ' PAL' : '');
+
+        updatedName = updatedNameNoExt + (ext.length > 0 ? ('.' + ext) : '');
+        stateName = updatedNameNoExt + '.state';
+      } else {
+        updatedName = 'savedisk' + saveDiskIndex + '.dsk';
+        stateName = 'savedisk' + saveDiskIndex + '.state';
       }
-
-      const pstartIdx = fileName.indexOf('(');
-      const pendIdx = fileName.lastIndexOf(')');
-
-      let parens = '';
-      if (pstartIdx !== -1 && pendIdx !== -1) {
-        parens = fileName.substring(pstartIdx, pendIdx + 1);
-      }
-
-      const updatedNameNoExt = 'game' + i +
-        (parens.length > 0 ? (' ' + parens) : '') +
-        (fileName.toLowerCase().indexOf('ntsc') !== -1 ? ' NTSC' : '') +
-        (fileName.toLowerCase().indexOf('pal') !== -1 ? ' PAL' : '');
-
-      const updatedName = updatedNameNoExt + (ext.length > 0 ? ('.' + ext) : '');
-      const stateName = updatedNameNoExt + '.state';
 
       const currentMedia = {
         name: updatedName,
@@ -561,6 +594,7 @@ export class Emulator extends RetroAppWrapper {
         statePath: '/home/web_user/retroarch/userdata/states/' + stateName,
         originalName: name,
         shortName: name,
+        isSaveDisk: isSaveDisk,
       };
 
       this.mediaList.push(currentMedia);
@@ -569,25 +603,42 @@ export class Emulator extends RetroAppWrapper {
       FS.write(stream, bytes, 0, bytes.length, 0, true);
       FS.close(stream);
 
-      LOG.info('Wrote disk: ' + currentMedia.path);
+      LOG.info('[SaveDiskDebug] Wrote disk: ' + currentMedia.path +
+        ' stateName=' + currentMedia.stateName + (isSaveDisk ? ' (save disk)' : ''));
     }
 
+    // Boot command: mounts whatever is first in mediaList, real media or a
+    // save disk (matches C64). A save-disks-only item still needs something
+    // mounted in the drive to actually boot to and write to -- otherwise it
+    // never gets touched, saveState() never sees a change, and no save is
+    // ever persisted (see SAVE_DISKS_DESIGN.md).
+    // RA names its own save-state file after whichever disk is in the
+    // highest-numbered actively-mounted drive -- flop2 beats flop1 whenever
+    // both are mounted (confirmed via live testing). This is decided once,
+    // here, rather than inside setMediaIndex/setFlop2Index -- those get
+    // called from several other places (disk swap, state restore) that have
+    // no business re-deciding which drive RA considers primary.
     if (this.mediaList.length > 0) {
       this.game = 'apple2e -gameio joy -flop1 "' + this.mediaList[0].path + '"';
       this.setMediaIndex(0);
+      this.setStateFilePath(this.mediaList[0].statePath);
 
-      const enable2nd525 = this.getProps().enable2nd525 || false;
       if (enable2nd525 && this.mediaList.length > 1) {
         this.game += ' -flop2 "' + this.mediaList[1].path + '"';
         this.flop2Index = 1;
+        this.setStateFilePath(this.mediaList[1].statePath);
       }
     }
 
-    const shorts = computeShortNames(this.mediaList.map(m => m.originalName));
-    for (let i = 0; i < this.mediaList.length; i++) {
+    const realDisks = this.mediaList.filter(m => !m.isSaveDisk);
+    const shorts = computeShortNames(realDisks.map(m => m.originalName));
+    for (let i = 0; i < realDisks.length; i++) {
       const dot = shorts[i].indexOf('.');
-      this.mediaList[i].shortName = dot !== -1 ? shorts[i].substring(0, dot) : shorts[i];
+      realDisks[i].shortName = dot !== -1 ? shorts[i].substring(0, dot) : shorts[i];
     }
+
+    LOG.info('[SaveDiskDebug] final mediaList: ' + this.mediaList.map(
+      m => m.stateName + (m.isSaveDisk ? ' (save disk)' : '')).join(', '));
   }
 
   async onWriteAdditionalFiles() {
@@ -756,6 +807,8 @@ export class Emulator extends RetroAppWrapper {
     const files = [];
     try {
       const media = this.getMediaList();
+      LOG.info('[SaveDiskDebug] saveState() media=' +
+        (media ? media.map(m => m.name + (m.isSaveDisk ? ' (save disk)' : '')).join(', ') : 'null'));
       if (!media) return;
 
       const currentIndex = this.mediaIndex;
@@ -774,6 +827,7 @@ export class Emulator extends RetroAppWrapper {
               const currentMd5 = await this.getFileContentMd5(s);
               // Only add if the file is different than the original
               if (currentMd5 !== m.md5) {
+                LOG.info('[SaveDiskDebug] saveState() changed: ' + m.name + ' (md5 ' + m.md5 + ' -> ' + currentMd5 + ')');
                 files.push({
                   name: m.name,
                   content: s,
@@ -789,13 +843,19 @@ export class Emulator extends RetroAppWrapper {
       // Restore the active disk
       this.setMediaIndex(currentIndex, true);
 
+      const saveStatePath = `${this.saveStatePrefix}${this.SAVE_NAME}`;
+      LOG.info('[SaveDiskDebug] saveState() path=' + saveStatePath +
+        ' changedFiles=' + files.map(f => f.name).join(', '));
+
       const hasChanges = await this.getSaveManager().checkFilesChanged(files);
+      LOG.info('[SaveDiskDebug] saveState() hasChanges=' + hasChanges);
       if (hasChanges) {
         await this.getSaveManager().save(
-          `${this.saveStatePrefix}${this.SAVE_NAME}`,
+          saveStatePath,
           files,
           this.saveMessageCallback,
         );
+        LOG.info('[SaveDiskDebug] saveState() saved to ' + saveStatePath);
       }
     } catch (e) {
       LOG.error('Error persisting save state: ' + e);
@@ -807,18 +867,31 @@ export class Emulator extends RetroAppWrapper {
 
     try {
       const saveName = `${this.SAVE_NAME}.zip`;
+      const loadPath = `${this.saveStatePrefix}${saveName}`;
+
+      LOG.info('[SaveDiskDebug] loadState() loading from path=' + loadPath);
 
       const files = await this.getSaveManager().load(
-        `${this.saveStatePrefix}${saveName}`,
+        loadPath,
         this.loadMessageCallback,
       );
+
+      LOG.info('[SaveDiskDebug] loadState() files=' +
+        (files === null ? 'null' : files === undefined ? 'undefined' :
+          '[' + files.map(f => f.name).join(', ') + ']'));
 
       // Cache file hashes
       await this.getSaveManager().checkFilesChanged(files);
 
+      LOG.info('[SaveDiskDebug] loadState() current mediaList=' +
+        this.mediaList.map(m => m.name + (m.isSaveDisk ? ' (save disk)' : '')).join(', '));
+
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         const mediaItem = this.mediaList.find(m => m.name === f.name);
+        LOG.info('[SaveDiskDebug] loadState() file=' + f.name +
+          ' matchedMedia=' + (mediaItem ? mediaItem.path : 'NOT FOUND') +
+          ' hasContent=' + !!f.content);
         if (mediaItem && f.content) {
           FS.writeFile(mediaItem.path, f.content);
         }
