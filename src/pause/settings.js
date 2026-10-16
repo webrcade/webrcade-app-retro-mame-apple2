@@ -43,6 +43,8 @@ export class Apple2SettingsEditor extends Component {
       vkTransparency: emulator.getPrefs().getVkTransparency(),
       origMediaIndex: emulator.getMediaIndex(),
       mediaIndex: emulator.getMediaIndex(),
+      origFlop2Index: emulator.getFlop2Index(),
+      flop2Index: emulator.getFlop2Index(),
     };
 
     this.shaderService = emulator.getShadersService();
@@ -58,11 +60,15 @@ export class Apple2SettingsEditor extends Component {
     const setFocusGridComps = (comps) => this.setState({ focusGridComps: comps });
     const setValues = (values) => this.setState({ values: values });
 
+    const driveCollision = values.mediaIndex !== -1 && values.mediaIndex === values.flop2Index;
+
     return (
       <EditorScreen
         showCancel={true}
+        okDisabled={driveCollision}
         onOk={async () => {
-          if (this.busy) return;
+          if (this.busy || driveCollision) return;
+
           this.busy = true;
 
           let change = false;
@@ -90,6 +96,10 @@ export class Apple2SettingsEditor extends Component {
           const newMediaIndex = parseInt(values.mediaIndex);
           if (values.origMediaIndex !== newMediaIndex) {
             emulator.setMediaIndex(newMediaIndex, true);
+          }
+          const newFlop2Index = parseInt(values.flop2Index);
+          if (values.origFlop2Index !== newFlop2Index) {
+            emulator.setFlop2Index(newFlop2Index, true);
           }
 
           await this.shaderService.setShader(values.shaderId);
@@ -170,11 +180,17 @@ class Apple2SessionSettingsTab extends FieldsTab {
   constructor(props) {
     super(props);
     this.mediaRef = React.createRef();
+    this.flop2Ref = React.createRef();
     this.mediaList = props.emulator.getMediaList();
+    const enable2nd525 = props.emulator.getProps().enable2nd525 || false;
     this.gridComps = [];
 
     if (this.mediaList && this.mediaList.length > 1) {
       this.gridComps.push([this.mediaRef]);
+    }
+    // Show drive 2 selector only if enabled AND there are 2+ disks
+    if (enable2nd525 && this.mediaList && this.mediaList.length > 1) {
+      this.gridComps.push([this.flop2Ref]);
     }
   }
 
@@ -187,27 +203,65 @@ class Apple2SessionSettingsTab extends FieldsTab {
   }
 
   render() {
-    const { mediaRef, mediaList } = this;
+    const { mediaRef, flop2Ref, mediaList } = this;
     const { focusGrid } = this.context;
     const { setValues, values, emulator } = this.props;
+
+    const enable2nd525 = emulator.getProps().enable2nd525 || false;
+
+    // Build a stable options list — same order/length no matter what the
+    // other drive is set to, so switching one drive never visually
+    // reshuffles the other's selector. Both drives may momentarily point
+    // at the same disk while the user is choosing; that's flagged below
+    // and blocked on OK rather than "resolved" by silently ejecting one.
+    const getOptions = () => {
+      const opts = [{ value: -1, label: "(none)" }];
+      for (let i = 0; i < mediaList.length; i++) {
+        opts.push({ value: i, label: (i + 1) + ": " + mediaList[i].shortName });
+      }
+      return opts;
+    };
 
     return (
       <>
         {mediaList && mediaList.length > 1 && (
           <FieldRow>
-            <FieldLabel>Current Disk</FieldLabel>
+            <FieldLabel>{enable2nd525 ? "Disk Drive 1" : "Current Disk"}</FieldLabel>
             <FieldControl>
               <DiskSelect
                 selectRef={mediaRef}
-                emulator={emulator}
+                mediaList={mediaList}
+                customOptions={enable2nd525 ? getOptions() : null}
                 onChange={(value) => {
-                  setValues({ ...values, ...{ mediaIndex: value } });
+                  setValues({ ...values, mediaIndex: value });
                 }}
                 value={values.mediaIndex}
                 onPad={e => focusGrid.moveFocus(e.type, mediaRef)}
               />
             </FieldControl>
           </FieldRow>
+        )}
+        {enable2nd525 && mediaList && mediaList.length > 1 && (
+          <FieldRow>
+            <FieldLabel>Disk Drive 2</FieldLabel>
+            <FieldControl>
+              <DiskSelect
+                selectRef={flop2Ref}
+                mediaList={mediaList}
+                customOptions={getOptions()}
+                onChange={(value) => {
+                  setValues({ ...values, flop2Index: value });
+                }}
+                value={values.flop2Index}
+                onPad={e => focusGrid.moveFocus(e.type, flop2Ref)}
+              />
+            </FieldControl>
+          </FieldRow>
+        )}
+        {enable2nd525 && values.mediaIndex !== -1 && values.mediaIndex === values.flop2Index && (
+          <div style={{ textAlign: 'center', fontSize: '1.1rem', color: '#ff6b6b', padding: '0.75rem 0' }}>
+            Drive 1 and Drive 2 can't contain the same disk.
+          </div>
         )}
       </>
     );
